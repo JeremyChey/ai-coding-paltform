@@ -6,12 +6,129 @@ import Editor from '@monaco-editor/react';
 export default function CodingPage() {
   // Create a place with null value
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
 
   // Create a space to put the result
   const [consoleOutput, setConsoleOutput] = useState<string>("");
 
-  function handleEditorDidMount(editor: any) { // When editor fully loaded, manaco will transfer the true value to us
+  // Create tabs of terminal and ai
+  const [activeTab, setActiveTab] = useState<"terminal" | "ai">("terminal");
+  
+  // Create a space to store AI feedback
+  const [aiFeedback, setAiFeedback] = useState<string>("");
+  
+  // Function of Hover when indicating the error part
+//const [hoveredError, setHoveredError] = useState<{ text: string; x:number; y:number} | null>(null);
+  
+  function handleEditorDidMount(editor: any, monaco:any) {
     editorRef.current = editor; // Store the true value in mount point
+    monacoRef.current = monaco;
+
+    if (monaco.languages.json) {
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+      validate: false,
+    });
+  }
+
+    {/*Listen for mouse movement over the editor
+    editor.onMouseMove((e:any) => {
+      const position = e.target?.position;
+      if(!position){setHoveredError(null); return;}
+      
+      const model = editor.getModel();
+      if (!model) { setHoveredError(null); return; }
+
+    // Get all markers at the current cursor position
+    const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+    const hit = markers.find(
+      (m: any) =>
+        position.lineNumber >= m.startLineNumber &&
+        position.lineNumber <= m.endLineNumber &&
+        position.column >= m.startColumn &&
+        position.column <= m.endColumn
+    );
+
+    if (hit) {
+      const domNode = editor.getDomNode();
+      const rect = domNode?.getBoundingClientRect();
+      const mouseX = e.event.browserEvent.clientX - rect.left;
+      const mouseY = e.event.browserEvent.clientY - rect.top;
+
+      setHoveredError({
+        text: hit.message,
+        x: mouseX + 10,
+        y: mouseY + 10,
+      });
+    } else {
+      setHoveredError(null);
+    }
+  });
+
+  // Clear tooltip when mouse leaves editor
+  editor.onMouseLeave(() => setHoveredError(null)); */}
+}
+    
+
+  // Function of when clicking on "Ask Mentor"
+  async function handleAskAI(){
+    if(!editorRef.current || !monacoRef.current) return;
+
+    //Get the newest code
+    const code = editorRef.current.getValue();
+
+    // Switching to AI tab automatically
+    setActiveTab("ai");
+    setAiFeedback("AI mentor is analyzing your code, please wait.....");
+    
+    try {
+      // Send to backend through AI route
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAiFeedback(data.preparedPrompt);
+
+        // Get the latest editor model
+        const editor = editorRef.current;
+      //const model = editor.getModel();
+        const monaco = monacoRef.current;
+
+        if (editor && monaco) {
+          const currentModel = editor.getModel();
+
+          if (currentModel) {
+            const markers= [
+              {
+                severity: monaco.MarkerSeverity.Error,
+                startLineNumber: 1,
+                startColumn: 1,
+                endLineNumber: 1,
+                endColumn: 30,
+                message: "AI Mentor Tip: Double check this line for any syntax standard!",
+              }
+            ];
+
+        // Using monaco to add red lines
+        monaco.editor.setModelMarkers(currentModel, "ai-mentor", markers);
+        console.log("Markers applied precisely to current view:", currentModel.uri.toString());
+       }
+     }
+   }
+
+       else {
+        setAiFeedback(`Error: ${data.error}`);
+      }
+
+    } catch (error) {
+      setAiFeedback("Network error, please check whether backend has been activated properly.");
+    }
   }
 
   // Function of when clicking on "Running Code"
@@ -59,7 +176,7 @@ export default function CodingPage() {
 
         {/*left box: question*/}
         <div className="w-1/2 bg-gray-800/50 p-6 rounded-xl border border-gray-700/50 flex-col gap-4">
-          <h2 className="text-2xl font bold text white">Question 1: Hello world</h2>
+          <h2 className="text-2xl font-bold text-white">Question 1: Hello world</h2>
           <p className="text-gray-400">
               Using Python, print out<code className="bg-gray-700 px-1.5 py-0.5 rounded text-green-300">Hello world</code>.
           </p>
@@ -76,54 +193,115 @@ export default function CodingPage() {
             <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded">Python</span>
           </div>
 
-         {/* frame box for inputting code*/}
-         <div className="h-[400px] w-full rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
-          <Editor
-            height="100%"
-            language="python"
-            theme="vs-dark"
-            defaultValue={`print("Hello World")`}
-            onMount={handleEditorDidMount} // Tie the mount, get the ture value
-            options={{
-              fontSize: 16,
-              minimap:{ enabled: false}, //Close the right minimap to have spacious look
-              automaticLayout: true, //Automatically adjust the box size
-            }}
-          />
-       </div>
+        {/* Wrapper: relative anchor for tooltip */}
+     { /*<div className="relative flex-shrink-0">*/}
 
-          {/* VS similar like terminal*/}
-          <div className="h-40 w-full bg-gray-950 rounded-lg p-4 font-mono text-sm border border-gray-800 overflow-y-auto flex-shrink-0">
-          <div className="text-gray-500 mb-2 border-b border-gray-800 pb-1 flex justify-between items-center">
-            <span>Terminal Output</span>
-            {consoleOutput && (
+         {/* frame box for inputting code*/}
+          <div className="h-[400px] w-full rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+            <Editor
+              height="100%"
+              language="python"
+              theme="vs-dark"
+              defaultValue={`print()`}
+              onMount={handleEditorDidMount} // Tie the mount, get the ture value
+              options={{
+                fontSize: 16,
+                minimap:{enabled: false}, //Close the right minimap to have spacious look
+                automaticLayout: true, //Automatically adjust the box size
+                hover: { enabled:true },
+                glyphMargin: true,
+              }}
+            />
+          </div>
+
+          {/*Hover*/}
+       { /*{hoveredError && (
+            <div
+              style={{ top: hoveredError.y, left: hoveredError.x }}
+              className="absolute bg-gray-800 border border-red-500 text-red-200 text-xs rounded p-2 shadow-xl z-50 pointer-events-none max-w-xs"
+            >
+              ⚠️ {hoveredError.text}
+            </div>
+          )}
+        </div>*/}
+
+          {/*Terminal + AI mentor Tabs*/}
+          <div className="h-48 w-full bg-gray-950 rounded-lg border border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
+          
+            {/* Tabs Headers*/}
+            <div className="bg-gray-900 border-b border-gray-800 flex items-center justify-between px-2 flex-shrink-0">
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setActiveTab("terminal")}
+                  className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colours ${
+                    activeTab === "terminal"
+                      ? "border-green-500 text-green-400 bg-gray-950"
+                      : "border-transparent text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  📟Terminal Output
+                </button>
+                <button
+                    onClick={() => setActiveTab("ai")}
+                    className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
+                      activeTab === "ai"
+                        ? "border-green-500 text-green-400 bg-gray-950"
+                        : "border-transparent text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                  🤖 AI Mentor
+              </button>
+            </div>
+
+            {/*Clear button*/}
+            {((activeTab === "terminal" && consoleOutput) || (activeTab === "ai" && aiFeedback)) && (
               <button 
-                onClick={() => setConsoleOutput("")} 
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                onClick={() => activeTab === "terminal" ? setConsoleOutput("") : setAiFeedback("")} 
+                className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1"
               >
                 Clear
               </button>
             )}
           </div>
-          <pre className="text-green-400 whitespace-pre-wrap">
-            {consoleOutput || "Waiting for running code....."}
-          </pre>
-        </div>
+
+          {/* Content Showcase*/}
+          <div className="p-4 flex-1 overflow-y-auto font-mono text-sm">
+            {activeTab === "terminal" ? (
+              <pre className="text-green-400 whitespace-pre-wrap">
+                {consoleOutput || "Waiting while running code....."}
+              </pre>
+            ) : (
+              <pre className="text-blue-400 whitespace-pre-wrap">
+                {aiFeedback || "Click \"Ask Mentor\" button to get professional and useful suggestions....."}
+              </pre>
+            )
+         }
+         </div>
+       </div>
 
           {/*button*/}
           <div className="flex justify-end gap-3">
             <button className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-5 rounded-lg transition-colors">
               Restart
             </button>
+
+            {/*"Ask Mentor" button*/}
+            <button
+              onClick={handleAskAI}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg shadow-md shadow-blue-900/20 transition-colors">
+              Ask Mentor
+            </button>
+
             <button
               onClick={handleRunCode} // Tie the clicking event, pack and send the code while clicking on it
               className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg shadow-md shadow-green-900/20 transition-colors">
               Running Code
             </button>
           </div>
-        </div>
-
+         </div>
       </main>
-    </div>
-  );   
+     </div>
+
+    
+  );
 }
